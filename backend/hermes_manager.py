@@ -1,8 +1,11 @@
 import asyncio
 import base64
+import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
 from config import WSL_VENV_ACTIVATE, WSL_HERMES_CMD, MAX_CONCURRENT_AGENTS, DEFAULT_TIMEOUT
@@ -12,6 +15,54 @@ from models import TaskStatus
 logger = logging.getLogger(__name__)
 
 EventCallback = Callable[[str, dict], Awaitable[None]]
+
+
+def parse_summary_line(lines: list[str]) -> dict:
+    result = {"duration_seconds": None, "message_count": None, "session_id": None}
+    for line in lines:
+        line = line.strip()
+        m = re.match(r"Session:\s+(\S+)", line)
+        if m:
+            result["session_id"] = m.group(1)
+        m = re.match(r"Duration:\s+(\d+\.?\d*)\s*(\w+)", line)
+        if m:
+            val = float(m.group(1))
+            unit = m.group(2).lower()
+            if unit.startswith("min"):
+                val *= 60
+            elif unit.startswith("h"):
+                val *= 3600
+            result["duration_seconds"] = val
+        m = re.match(r"Messages:\s+(\d+)", line)
+        if m:
+            result["message_count"] = int(m.group(1))
+    return result
+
+
+async def read_session_token_stats(session_id: str) -> dict:
+    session_dir = Path("/root/.hermes/sessions")
+    session_file = session_dir / f"session_{session_id}.json"
+    if not session_file.exists():
+        return {}
+    try:
+        import aiofiles
+        async with aiofiles.open(session_file, "r") as f:
+            data = json.loads(await f.read())
+    except ImportError:
+        with open(session_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        logger.debug(f"Failed to read session file {session_id}: {e}")
+        return {}
+
+    token_count = data.get("total_tokens", 0)
+    messages = data.get("messages", [])
+    if not token_count and messages:
+        for msg in messages:
+            usage = msg.get("usage", {})
+            if usage:
+                token_count += usage.get("total_tokens", 0)
+    return {"token_count": token_count, "message_count": len(messages)}
 
 
 class HermesProcess:
@@ -30,6 +81,8 @@ class HermesProcess:
         self.exit_code: Optional[int] = None
         self.stdout_lines: list[str] = []
         self.stderr_lines: list[str] = []
+        self.token_count: int = 0
+        self.cost_estimate: float = 0.0
         self._event_callbacks: list[EventCallback] = []
 
     def on_event(self, callback: EventCallback):
@@ -44,7 +97,7 @@ class HermesProcess:
 
     def _build_wsl_command(self) -> list[str]:
         encoded_prompt = base64.b64encode(self.prompt.encode("utf-8")).decode("ascii")
-        prompt_arg = f"$(echo '{encoded_prompt}' | base64 -d)"
+        prompt_arg = f"\"$(echo '{encoded_prompt}' | base64 -d)\""
 
         extra_flags = ""
         if self.model:
@@ -54,7 +107,7 @@ class HermesProcess:
         if self.skills:
             extra_flags += f" -s {self.skills}"
 
-        return ["wsl", "bash", "-c", f"source {WSL_VENV_ACTIVATE} && cd /root/hermes-agent && hermes chat -q -Q{extra_flags} {prompt_arg}"]
+        return ["wsl", "bash", "-c", f"source {WSL_VENV_ACTIVATE} && cd /root/hermes-agent && hermes chat -q {prompt_arg} -Q{extra_flags}"]
 
     async def start(self):
         self.status = TaskStatus.RUNNING
@@ -84,13 +137,28 @@ class HermesProcess:
                 await self._emit("status_changed", {"status": "failed", "error": "timeout"})
                 return
 
+            try:
+                await asyncio.wait_for(self.process.wait(), timeout=10)
+            except asyncio.TimeoutError:
+                logger.warning(f"Task {self.task_id}: process did not exit after streams closed")
+
             self.exit_code = self.process.returncode
             self.finished_at = datetime.now(timezone.utc)
 
-            if self.exit_code == 0:
+            summary = parse_summary_line(self.stdout_lines)
+            session_id = summary.get("session_id")
+            if session_id:
+                try:
+                    stats = await read_session_token_stats(session_id)
+                    if stats.get("token_count"):
+                        self.token_count = stats["token_count"]
+                except Exception as e:
+                    logger.debug(f"Failed to read session token stats: {e}")
+
+            if self.exit_code is None or self.exit_code == 0:
                 self.status = TaskStatus.COMPLETED
                 await self._update_db_status(TaskStatus.COMPLETED)
-                await self._emit("status_changed", {"status": "completed", "exit_code": 0})
+                await self._emit("status_changed", {"status": "completed", "exit_code": self.exit_code or 0})
             else:
                 self.status = TaskStatus.FAILED
                 error_msg = "\n".join(self.stderr_lines[-5:]) if self.stderr_lines else f"Exit code: {self.exit_code}"
@@ -98,7 +166,7 @@ class HermesProcess:
                 await self._emit("status_changed", {"status": "failed", "exit_code": self.exit_code})
 
         except Exception as e:
-            logger.error(f"Task {self.task_id} error: {e}")
+            logger.error(f"Task {self.task_id} error: {type(e).__name__}: {e!r}")
             self.status = TaskStatus.FAILED
             self.finished_at = datetime.now(timezone.utc)
             await self._update_db_status(TaskStatus.FAILED, error_message=str(e))
@@ -159,6 +227,13 @@ class HermesProcess:
                     preview = "\n".join(self.stdout_lines[-10:])
                     updates.append("result_preview = ?")
                     values.append(preview)
+
+                if self.token_count:
+                    updates.append("token_count = ?")
+                    values.append(self.token_count)
+                if self.cost_estimate:
+                    updates.append("cost_estimate = ?")
+                    values.append(self.cost_estimate)
 
             if error_message:
                 updates.append("error_message = ?")

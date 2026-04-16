@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { api } from "@/lib/api"
+import { useSSEEvent } from "@/lib/hooks"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,9 +35,16 @@ export default function AgentsPage() {
 
   React.useEffect(() => {
     fetchStatus()
-    const interval = setInterval(fetchStatus, 3000)
-    return () => clearInterval(interval)
   }, [fetchStatus])
+
+  const onSSEEvent = React.useCallback(() => {
+    fetchStatus()
+  }, [fetchStatus])
+
+  useSSEEvent("status_changed", onSSEEvent)
+  useSSEEvent("task_created", onSSEEvent)
+  useSSEEvent("task_finished", onSSEEvent)
+  useSSEEvent("slot_acquired", onSSEEvent)
 
   if (loading) return <div className="p-6 text-muted-foreground">Loading agents...</div>
 

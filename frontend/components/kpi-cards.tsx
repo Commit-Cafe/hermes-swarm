@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardAction, CardFooter } 
 import { Badge } from "@/components/ui/badge"
 import { type Filters } from "@/lib/analytics"
 import { api } from "@/lib/api"
+import { useSSEEvent } from "@/lib/hooks"
 
 type KPI = { title: string; value: number; change: number; changeType: 'increase' | 'decrease'; description?: string }
 
@@ -24,6 +25,7 @@ function formatValue(title: string, v: number): string {
 export function KPICards({ filters }: { filters: Filters }) {
   const [kpis, setKpis] = React.useState<KPI[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [refreshKey, setRefreshKey] = React.useState(0)
 
   React.useEffect(() => {
     const now = new Date()
@@ -48,7 +50,15 @@ export function KPICards({ filters }: { filters: Filters }) {
       }))
       setKpis(mapped)
     }).finally(() => setLoading(false))
-  }, [filters.timeRange, filters.startDate, filters.endDate, filters.agents?.join(',')])
+  }, [filters.timeRange, filters.startDate, filters.endDate, filters.agents?.join(','), refreshKey])
+
+  const onSSEEvent = React.useCallback(() => {
+    setRefreshKey((k) => k + 1)
+  }, [])
+
+  useSSEEvent("status_changed", onSSEEvent)
+  useSSEEvent("task_created", onSSEEvent)
+  useSSEEvent("task_finished", onSSEEvent)
 
   const items = loading ? [] : kpis
 

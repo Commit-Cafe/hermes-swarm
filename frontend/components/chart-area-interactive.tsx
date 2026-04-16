@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/toggle-group"
 
 import { api } from "@/lib/api"
+import { useSSEEvent } from "@/lib/hooks"
 
 const chartConfig = {
   tasks: { label: "Total Tasks", color: "var(--chart-1)" },
@@ -43,6 +44,7 @@ export function ChartAreaInteractive() {
   const [timeRange, setTimeRange] = React.useState("7d")
   const [data, setData] = React.useState<any[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [refreshKey, setRefreshKey] = React.useState(0)
 
   React.useEffect(() => {
     if (isMobile) {
@@ -66,7 +68,15 @@ export function ChartAreaInteractive() {
       console.error("Error fetching chart data:", error)
       setData([])
     }).finally(() => setLoading(false))
-  }, [timeRange])
+  }, [timeRange, refreshKey])
+
+  const onSSEEvent = React.useCallback(() => {
+    setRefreshKey((k) => k + 1)
+  }, [])
+
+  useSSEEvent("status_changed", onSSEEvent)
+  useSSEEvent("task_created", onSSEEvent)
+  useSSEEvent("task_finished", onSSEEvent)
 
   return (
     <Card className="@container/card">

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { api } from "@/lib/api"
+import { useSSEEvent } from "@/lib/hooks"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -26,6 +27,8 @@ export default function LogsPage() {
   const [selectedTask, setSelectedTask] = React.useState<string>("")
   const [logs, setLogs] = React.useState<LogEntry[]>([])
   const [loading, setLoading] = React.useState(false)
+  const logEndRef = React.useRef<HTMLDivElement>(null)
+  const nextLogId = React.useRef(0)
 
   React.useEffect(() => {
     api.listTasks({ limit: 50 }).then(setTasks).catch(console.error)
@@ -34,11 +37,45 @@ export default function LogsPage() {
   React.useEffect(() => {
     if (!selectedTask) return
     setLoading(true)
+    setLogs([])
+    nextLogId.current = 0
     api.getTaskLogs(selectedTask, { limit: 200 })
-      .then(setLogs)
+      .then((data) => {
+        const withIds = data.map((log: any) => ({
+          ...log,
+          id: nextLogId.current++,
+        }))
+        setLogs(withIds)
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [selectedTask])
+
+  const handleLogEvent = React.useCallback((event: any) => {
+    if (!selectedTask || event.task_id !== selectedTask) return
+    if (event.type !== "log") return
+    setLogs((prev) => [...prev, {
+      id: nextLogId.current++,
+      task_id: event.task_id,
+      timestamp: new Date().toISOString(),
+      stream: event.stream,
+      content: event.content,
+    }])
+  }, [selectedTask])
+
+  useSSEEvent("log", handleLogEvent)
+
+  React.useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [logs])
+
+  const refreshTasks = React.useCallback(() => {
+    api.listTasks({ limit: 50 }).then(setTasks).catch(console.error)
+  }, [])
+
+  useSSEEvent("task_created", refreshTasks)
+  useSSEEvent("status_changed", refreshTasks)
+  useSSEEvent("task_finished", refreshTasks)
 
   return (
     <div className="p-4 lg:p-6 space-y-4">
@@ -59,7 +96,14 @@ export default function LogsPage() {
         </select>
         {selectedTask && (
           <Button variant="outline" size="sm" onClick={() => {
-            api.getTaskLogs(selectedTask, { limit: 200 }).then(setLogs)
+            nextLogId.current = 0
+            api.getTaskLogs(selectedTask, { limit: 200 }).then((data) => {
+              const withIds = data.map((log: any) => ({
+                ...log,
+                id: nextLogId.current++,
+              }))
+              setLogs(withIds)
+            })
           }}>
             Refresh
           </Button>
@@ -84,6 +128,7 @@ export default function LogsPage() {
                   {log.content}
                 </div>
               ))}
+              <div ref={logEndRef} />
             </pre>
           </CardContent>
         </Card>

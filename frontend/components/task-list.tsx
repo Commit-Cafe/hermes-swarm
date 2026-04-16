@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { api } from "@/lib/api"
+import { useSSEEvent } from "@/lib/hooks"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -49,9 +50,15 @@ export function TaskList() {
 
   React.useEffect(() => {
     fetchTasks()
-    const interval = setInterval(fetchTasks, 5000)
-    return () => clearInterval(interval)
   }, [fetchTasks])
+
+  const onSSEEvent = React.useCallback(() => {
+    fetchTasks()
+  }, [fetchTasks])
+
+  useSSEEvent("task_created", onSSEEvent)
+  useSSEEvent("status_changed", onSSEEvent)
+  useSSEEvent("task_finished", onSSEEvent)
 
   const handleCancel = async (taskId: string) => {
     try {

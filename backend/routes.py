@@ -85,6 +85,37 @@ async def list_tasks(
         await db.close()
 
 
+@router.get("/tasks/stream")
+async def stream_events():
+    queue = asyncio.Queue()
+
+    async def on_event(task_id: str, event: dict):
+        await queue.put(event)
+
+    swarm_manager.on_event(on_event)
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=30)
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
 async def get_task(task_id: str):
     db = await get_db()
@@ -135,37 +166,6 @@ async def get_task_logs(
         ]
     finally:
         await db.close()
-
-
-@router.get("/tasks/stream")
-async def stream_events():
-    queue = asyncio.Queue()
-
-    async def on_event(task_id: str, event: dict):
-        await queue.put(event)
-
-    swarm_manager.on_event(on_event)
-
-    async def event_generator():
-        try:
-            while True:
-                try:
-                    event = await asyncio.wait_for(queue.get(), timeout=30)
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-                except asyncio.TimeoutError:
-                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
-        except asyncio.CancelledError:
-            pass
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @router.get("/dashboard/kpis", response_model=DashboardKPIsResponse)
