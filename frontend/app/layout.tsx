@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SSEProvider } from "@/lib/hooks";
+import { LayoutInner } from "@/components/layout-inner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,11 +20,6 @@ export const metadata: Metadata = {
   description: "Multi-Hermes-Agent orchestration dashboard",
 };
 
-import React from "react";
-import { AppSidebar } from "@/components/app-sidebar";
-import { SiteHeader } from "@/components/site-header";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -34,21 +30,7 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
           <SSEProvider>
-          <SidebarProvider
-            style={{
-              // Adjust shell sizes
-              "--sidebar-width": "calc(var(--spacing) * 72)",
-              "--header-height": "calc(var(--spacing) * 12)",
-            } as React.CSSProperties}
-          >
-            <AppSidebar variant="inset" />
-            <SidebarInset>
-              <SiteHeader />
-              <React.Suspense>
-                {children}
-              </React.Suspense>
-            </SidebarInset>
-          </SidebarProvider>
+            <LayoutInner>{children}</LayoutInner>
           </SSEProvider>
         </ThemeProvider>
       </body>
