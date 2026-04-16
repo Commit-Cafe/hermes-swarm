@@ -21,7 +21,7 @@ async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
-  createTask: (data: { name: string; prompt: string; model?: string; provider?: string; skills?: string; timeout?: number }) =>
+  createTask: (data: { name: string; prompt: string; model?: string; provider?: string; skills?: string; timeout?: number; strategy?: string; strategy_count?: number }) =>
     apiCall<any>('/tasks', {
       method: 'POST',
       body: JSON.stringify(data),

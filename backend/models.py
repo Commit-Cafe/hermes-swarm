@@ -19,6 +19,12 @@ class TaskCreate(BaseModel):
     provider: Optional[str] = None
     skills: Optional[str] = None
     timeout: Optional[int] = None
+    strategy: Optional[str] = None
+    strategy_count: Optional[int] = None
+
+
+class BatchTaskCreate(BaseModel):
+    tasks: list[TaskCreate]
 
 
 class TaskResponse(BaseModel):

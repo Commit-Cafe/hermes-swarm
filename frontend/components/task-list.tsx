@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { api } from "@/lib/api"
 import { useSSEEvent } from "@/lib/hooks"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -85,40 +86,32 @@ export function TaskList() {
         </div>
       ) : (
         tasks.map((task) => (
-          <Card key={task.id}>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">{task.name}</CardTitle>
-                <Badge variant="outline" className={statusColor(task.status)}>
-                  {task.status}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{task.prompt}</p>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span>ID: {task.id}</span>
-                {task.model && <span>Model: {task.model}</span>}
-                {task.duration_seconds != null && <span>Duration: {task.duration_seconds.toFixed(1)}s</span>}
-                {task.status === "running" && (
-                  <Button variant="destructive" size="sm" onClick={() => handleCancel(task.id)}>
-                    Cancel
-                  </Button>
+          <Link key={task.id} href={`/tasks/${task.id}`}>
+            <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium">{task.name}</CardTitle>
+                  <Badge variant="outline" className={statusColor(task.status)}>
+                    {task.status}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{task.prompt}</p>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span>ID: {task.id}</span>
+                  {task.model && <span>Model: {task.model}</span>}
+                  {task.duration_seconds != null && <span>Duration: {task.duration_seconds.toFixed(1)}s</span>}
+                  {task.status === "running" && (
+                    <span className="text-blue-500" onClick={(e) => { e.preventDefault(); handleCancel(task.id); }}>Cancel</span>
+                  )}
+                </div>
+                {task.error_message && (
+                  <p className="text-xs text-red-500 mt-2 line-clamp-2">{task.error_message}</p>
                 )}
-              </div>
-              {task.error_message && (
-                <p className="text-xs text-red-500 mt-2 line-clamp-2">{task.error_message}</p>
-              )}
-              {task.result_preview && task.status === "completed" && (
-                <details className="mt-2">
-                  <summary className="text-xs text-muted-foreground cursor-pointer">View output</summary>
-                  <pre className="text-xs mt-1 p-2 bg-muted rounded-md overflow-auto max-h-40 whitespace-pre-wrap">
-                    {task.result_preview}
-                  </pre>
-                </details>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
         ))
       )}
     </div>

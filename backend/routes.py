@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from models import (
     TaskCreate, TaskResponse, TaskStatus, TaskLogEntry,
     DashboardKPI, DashboardKPIsResponse, SeriesPoint, MetricsSeriesResponse,
+    BatchTaskCreate,
 )
 from database import get_db
 from config import DEFAULT_TIMEOUT
@@ -42,23 +43,91 @@ def _row_to_task_response(row) -> TaskResponse:
 
 @router.post("/tasks", response_model=TaskResponse)
 async def create_task(task: TaskCreate):
-    task_id = await swarm_manager.create_task(
-        name=task.name,
-        prompt=task.prompt,
-        model=task.model,
-        provider=task.provider,
-        skills=task.skills,
-        timeout=task.timeout or DEFAULT_TIMEOUT,
-    )
-    db = await get_db()
-    try:
-        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-        row = await cursor.fetchone()
-        if row:
-            return _row_to_task_response(row)
-        raise HTTPException(status_code=404, detail="Task not found after creation")
-    finally:
-        await db.close()
+    strategy = task.strategy
+    strategy_count = task.strategy_count or 3
+
+    if strategy == "best-of-n":
+        task_ids = []
+        for i in range(strategy_count):
+            tid = await swarm_manager.create_task(
+                name=f"{task.name} [best-of-n:{i+1}/{strategy_count}]",
+                prompt=task.prompt,
+                model=task.model,
+                provider=task.provider,
+                skills=task.skills,
+                timeout=task.timeout or DEFAULT_TIMEOUT,
+            )
+            task_ids.append(tid)
+        db = await get_db()
+        try:
+            cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_ids[0],))
+            row = await cursor.fetchone()
+            if row:
+                return _row_to_task_response(row)
+        finally:
+            await db.close()
+        raise HTTPException(status_code=500, detail="Failed to create best-of-n tasks")
+
+    elif strategy == "iterative":
+        parent_id = await swarm_manager.create_task(
+            name=f"{task.name} [iterative:1/{strategy_count}]",
+            prompt=task.prompt,
+            model=task.model,
+            provider=task.provider,
+            skills=task.skills,
+            timeout=task.timeout or DEFAULT_TIMEOUT,
+        )
+        db = await get_db()
+        try:
+            cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (parent_id,))
+            row = await cursor.fetchone()
+            if row:
+                return _row_to_task_response(row)
+        finally:
+            await db.close()
+        raise HTTPException(status_code=500, detail="Failed to create iterative task")
+
+    else:
+        task_id = await swarm_manager.create_task(
+            name=task.name,
+            prompt=task.prompt,
+            model=task.model,
+            provider=task.provider,
+            skills=task.skills,
+            timeout=task.timeout or DEFAULT_TIMEOUT,
+        )
+        db = await get_db()
+        try:
+            cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            row = await cursor.fetchone()
+            if row:
+                return _row_to_task_response(row)
+            raise HTTPException(status_code=404, detail="Task not found after creation")
+        finally:
+            await db.close()
+
+
+@router.post("/tasks/batch", response_model=list[TaskResponse])
+async def create_batch_tasks(batch: BatchTaskCreate):
+    results = []
+    for task in batch.tasks:
+        task_id = await swarm_manager.create_task(
+            name=task.name,
+            prompt=task.prompt,
+            model=task.model,
+            provider=task.provider,
+            skills=task.skills,
+            timeout=task.timeout or DEFAULT_TIMEOUT,
+        )
+        db = await get_db()
+        try:
+            cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            row = await cursor.fetchone()
+            if row:
+                results.append(_row_to_task_response(row))
+        finally:
+            await db.close()
+    return results
 
 
 @router.get("/tasks", response_model=list[TaskResponse])
@@ -209,6 +278,13 @@ async def get_kpis(
         avg_row = await cursor.fetchone()
         avg_duration = avg_row["avg_d"] if avg_row and avg_row["avg_d"] else 0
 
+        cursor = await db.execute(
+            "SELECT SUM(COALESCE(token_count, 0)) as total_tokens FROM tasks WHERE created_at >= ? || 'T00:00:00' AND created_at <= ? || 'T23:59:59'",
+            (start_date, end_date),
+        )
+        token_row = await cursor.fetchone()
+        total_tokens = token_row["total_tokens"] if token_row and token_row["total_tokens"] else 0
+
         running = await swarm_manager.get_running_count()
 
         kpis = [
@@ -217,6 +293,7 @@ async def get_kpis(
             DashboardKPI(title="Failed", value=failed, change=0, change_type="increase", description="Tasks that failed"),
             DashboardKPI(title="Running Now", value=running, change=0, change_type="increase", description="Currently active agents"),
             DashboardKPI(title="Avg Duration", value=round(avg_duration, 1), change=0, change_type="decrease", description="Average completion time (s)"),
+            DashboardKPI(title="Tokens Used", value=total_tokens, change=0, change_type="increase", description="Total tokens processed"),
         ]
 
         return DashboardKPIsResponse(kpis=kpis)

@@ -96,6 +96,9 @@ export function SSEProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return
         setConnected(true)
         retryRef.current = 0
+        if ("Notification" in window && Notification.permission === "default") {
+          Notification.requestPermission()
+        }
       }
 
       es.onmessage = (e) => {
@@ -104,6 +107,14 @@ export function SSEProvider({ children }: { children: React.ReactNode }) {
           const data = JSON.parse(e.data)
           if (data.type !== "heartbeat") {
             dispatch(data)
+            if (data.type === "task_finished" && "Notification" in window && Notification.permission === "granted") {
+              const status = data.status || "unknown"
+              const taskId = data.task_id || ""
+              new Notification("Hermes Swarm", {
+                body: `Task ${taskId} finished: ${status}`,
+                tag: taskId,
+              })
+            }
           }
         } catch {}
       }
