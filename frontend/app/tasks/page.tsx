@@ -102,7 +102,10 @@ export default function TasksPage() {
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
-      <h1 className="text-xl font-semibold">Create New Task</h1>
+      <div>
+        <h1 className="text-sm font-semibold">Create Task</h1>
+        <p className="text-[11px] text-muted-foreground">Dispatch prompts to your agent swarm</p>
+      </div>
 
       <Tabs defaultValue="single" className="w-full">
         <TabsList>
@@ -289,7 +292,7 @@ export default function TasksPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm">Recently Created</CardTitle>
+              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Recently Created</CardTitle>
               <Button variant="ghost" size="sm" onClick={() => setLastResults([])}>Clear</Button>
             </div>
           </CardHeader>
@@ -297,7 +300,7 @@ export default function TasksPage() {
             <div className="space-y-2">
               {lastResults.slice(0, 10).map((r) => (
                 <div key={r.id} className="flex items-center gap-2 text-sm">
-                  <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500">{r.status}</Badge>
+                  <Badge variant="outline" className="text-[9px] font-mono">{r.status}</Badge>
                   <span className="font-medium">{r.name}</span>
                   <span className="text-muted-foreground text-xs">{r.id}</span>
                 </div>

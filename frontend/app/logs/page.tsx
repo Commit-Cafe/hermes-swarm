@@ -3,24 +3,11 @@
 import * as React from "react"
 import { api } from "@/lib/api"
 import { useSSEEvent } from "@/lib/hooks"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 
-type Task = {
-  id: string
-  name: string
-  status: string
-}
+type Task = { id: string; name: string; status: string }
 
-type LogEntry = {
-  id: number
-  task_id: string
-  timestamp: string
-  stream: string
-  content: string
-}
+type LogEntry = { id: number; task_id: string; timestamp: string; stream: string; content: string }
 
 export default function LogsPage() {
   const [tasks, setTasks] = React.useState<Task[]>([])
@@ -45,11 +32,7 @@ export default function LogsPage() {
     nextLogId.current = 0
     api.getTaskLogs(selectedTask, { limit: 500 })
       .then((data) => {
-        const withIds = data.map((log: any) => ({
-          ...log,
-          id: nextLogId.current++,
-        }))
-        setLogs(withIds)
+        setLogs(data.map((log: any) => ({ ...log, id: nextLogId.current++ })))
       })
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -66,22 +49,17 @@ export default function LogsPage() {
       content: event.content,
     }])
   }, [selectedTask])
-
   useSSEEvent("log", handleLogEvent)
 
   React.useEffect(() => {
-    if (autoScroll) {
-      logEndRef.current?.scrollIntoView({ behavior: "smooth" })
-    }
+    if (autoScroll) logEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [logs, autoScroll])
 
   const handleScroll = React.useCallback(() => {
     if (!logContainerRef.current) return
     const el = logContainerRef.current
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-    if (atBottom !== autoScroll) {
-      setAutoScroll(atBottom)
-    }
+    if (atBottom !== autoScroll) setAutoScroll(atBottom)
   }, [autoScroll])
 
   const refreshTasks = React.useCallback(() => {
@@ -93,9 +71,7 @@ export default function LogsPage() {
 
   const filteredLogs = React.useMemo(() => {
     let result = logs
-    if (streamFilter !== "all") {
-      result = result.filter((l) => l.stream === streamFilter)
-    }
+    if (streamFilter !== "all") result = result.filter((l) => l.stream === streamFilter)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       result = result.filter((l) => l.content.toLowerCase().includes(q))
@@ -108,18 +84,21 @@ export default function LogsPage() {
 
   return (
     <div className="p-4 lg:p-6 space-y-4">
-      <h1 className="text-xl font-semibold">Task Logs</h1>
+      <div>
+        <h1 className="text-sm font-semibold">Logs</h1>
+        <p className="text-[11px] text-muted-foreground">View task output and error streams</p>
+      </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <select
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[250px]"
+          className="rounded-md border border-border bg-background px-2 py-1.5 text-xs min-w-[220px] font-mono"
           value={selectedTask}
           onChange={(e) => setSelectedTask(e.target.value)}
         >
           <option value="">Select a task...</option>
           {tasks.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.name} ({t.id}) - {t.status}
+              {t.name} ({t.id.slice(0, 8)}) [{t.status}]
             </option>
           ))}
         </select>
@@ -127,92 +106,80 @@ export default function LogsPage() {
         {selectedTask && (
           <>
             <div className="flex items-center gap-1">
-              <Button
-                variant={streamFilter === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStreamFilter("all")}
-              >
-                All ({logs.length})
-              </Button>
-              <Button
-                variant={streamFilter === "stdout" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStreamFilter("stdout")}
-              >
-                stdout ({stdoutCount})
-              </Button>
-              <Button
-                variant={streamFilter === "stderr" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStreamFilter("stderr")}
-              >
-                stderr ({stderrCount})
-              </Button>
+              {(["all", "stdout", "stderr"] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStreamFilter(s)}
+                  className={`px-2 py-1 text-[10px] rounded font-mono transition-colors ${
+                    streamFilter === s
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-accent"
+                  }`}
+                >
+                  {s === "all" ? `all (${logs.length})` : s === "stdout" ? `out (${stdoutCount})` : `err (${stderrCount})`}
+                </button>
+              ))}
             </div>
-
-            <Input
-              placeholder="Search logs..."
+            <input
+              placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-[200px]"
+              className="max-w-[160px] h-7 text-[11px] rounded-md border border-border bg-background px-2"
             />
-
-            <div className="flex items-center gap-2 ml-auto">
-              <Button
-                variant={autoScroll ? "default" : "outline"}
-                size="sm"
+            <div className="flex items-center gap-1 ml-auto">
+              <button
                 onClick={() => setAutoScroll(!autoScroll)}
+                className={`px-2 py-1 text-[10px] rounded font-mono transition-colors ${
+                  autoScroll ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                }`}
               >
-                {autoScroll ? "Auto-scroll ON" : "Auto-scroll OFF"}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => {
-                nextLogId.current = 0
-                api.getTaskLogs(selectedTask, { limit: 500 }).then((data) => {
-                  const withIds = data.map((log: any) => ({
-                    ...log,
-                    id: nextLogId.current++,
-                  }))
-                  setLogs(withIds)
-                })
-              }}>
-                Refresh
-              </Button>
+                {autoScroll ? "auto ↓" : "manual"}
+              </button>
+              <button
+                onClick={() => {
+                  nextLogId.current = 0
+                  api.getTaskLogs(selectedTask, { limit: 500 }).then((data) => {
+                    setLogs(data.map((log: any) => ({ ...log, id: nextLogId.current++ })))
+                  })
+                }}
+                className="px-2 py-1 text-[10px] rounded bg-muted text-muted-foreground hover:bg-accent font-mono"
+              >
+                refresh
+              </button>
             </div>
           </>
         )}
       </div>
 
-      {loading && <div className="text-sm text-muted-foreground">Loading logs...</div>}
+      {loading && <div className="text-xs text-muted-foreground">Loading...</div>}
 
       {!loading && selectedTask && logs.length === 0 && (
-        <div className="text-sm text-muted-foreground">No logs found for this task.</div>
+        <div className="text-xs text-muted-foreground py-4 text-center">No logs found</div>
       )}
 
       {!loading && filteredLogs.length > 0 && (
-        <Card>
-          <CardContent className="pt-4">
-            <div
-              ref={logContainerRef}
-              onScroll={handleScroll}
-              className="overflow-auto max-h-[600px]"
-            >
-              <pre className="text-xs whitespace-pre-wrap font-mono">
-                {filteredLogs.map((log) => (
-                  <div key={log.id} className={log.stream === "stderr" ? "text-red-500" : ""}>
-                    <span className="text-muted-foreground">
-                      [{new Date(log.timestamp).toLocaleTimeString()}]
-                    </span>{" "}
-                    {log.content}
-                  </div>
-                ))}
-                <div ref={logEndRef} />
-              </pre>
-            </div>
-            <div className="mt-2 text-xs text-muted-foreground">
-              Showing {filteredLogs.length} of {logs.length} log entries
-            </div>
-          </CardContent>
-        </Card>
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div
+            ref={logContainerRef}
+            onScroll={handleScroll}
+            className="overflow-auto max-h-[600px] bg-card"
+          >
+            <pre className="text-[11px] whitespace-pre-wrap font-mono p-3">
+              {filteredLogs.map((log) => (
+                <div key={log.id} className={`${log.stream === "stderr" ? "text-destructive" : ""} leading-relaxed`}>
+                  <span className="text-muted-foreground">
+                    [{new Date(log.timestamp).toLocaleTimeString()}]
+                  </span>{" "}
+                  {log.content}
+                </div>
+              ))}
+              <div ref={logEndRef} />
+            </pre>
+          </div>
+          <div className="px-3 py-1.5 border-t border-border text-[10px] text-muted-foreground font-mono">
+            {filteredLogs.length}/{logs.length} entries
+          </div>
+        </div>
       )}
     </div>
   )

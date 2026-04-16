@@ -1,9 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconArrowDownRight, IconArrowUpRight } from "@tabler/icons-react"
-import { Card, CardHeader, CardTitle, CardDescription, CardAction, CardFooter } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { type Filters } from "@/lib/analytics"
 import { api } from "@/lib/api"
 import { useSSEEvent } from "@/lib/hooks"
@@ -60,30 +58,31 @@ export function KPICards({ filters }: { filters: Filters }) {
   useSSEEvent("task_created", onSSEEvent)
   useSSEEvent("task_finished", onSSEEvent)
 
-  const items = loading ? [] : kpis
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 px-4 lg:px-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Card key={i} className="animate-pulse">
+            <CardHeader className="p-4">
+              <div className="h-3 w-16 bg-muted rounded" />
+              <div className="h-6 w-12 bg-muted rounded mt-2" />
+            </CardHeader>
+          </Card>
+        ))}
+      </div>
+    )
+  }
 
   return (
-    <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-      {loading && (
-        <div className="col-span-full text-sm text-muted-foreground px-2">Loading KPIs…</div>
-      )}
-      {!loading && items.map((m) => (
-        <Card key={m.title} className="@container/card">
-          <CardHeader>
-            <CardDescription>{m.title}</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 px-4 lg:px-6">
+      {kpis.map((m) => (
+        <Card key={m.title} className="py-0">
+          <CardHeader className="p-4 pb-3">
+            <CardDescription className="text-[10px] uppercase tracking-wider">{m.title}</CardDescription>
+            <CardTitle className="text-xl font-semibold tabular-nums tracking-tight">
               {formatValue(m.title, m.value)}
             </CardTitle>
-            <CardAction>
-              <Badge variant="outline">
-                {m.changeType === 'increase' ? <IconArrowUpRight /> : <IconArrowDownRight />}
-                {m.change > 0 ? `+${m.change}%` : `${m.change}%`}
-              </Badge>
-            </CardAction>
           </CardHeader>
-          <CardFooter className="flex-col items-start gap-1.5 text-sm">
-            <div className="text-muted-foreground">{m.description}</div>
-          </CardFooter>
         </Card>
       ))}
     </div>

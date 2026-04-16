@@ -159,6 +159,7 @@ async def stream_events():
     queue = asyncio.Queue()
 
     async def on_event(task_id: str, event: dict):
+        event["task_id"] = task_id
         await queue.put(event)
 
     swarm_manager.on_event(on_event)

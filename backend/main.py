@@ -1,5 +1,9 @@
 import logging
+import os
 from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
+load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +23,18 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     await init_db()
+
+    glm_api_key = os.getenv("GLM_API_KEY", "")
+    glm_base_url = os.getenv("GLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
+    glm_model = os.getenv("GLM_MODEL", "glm-5-turbo")
+
+    if glm_api_key:
+        from hermes_manager import set_glm_config
+        set_glm_config(api_key=glm_api_key, base_url=glm_base_url, model=glm_model)
+        logger.info(f"GLM API configured: model={glm_model}, base_url={glm_base_url}")
+    else:
+        logger.warning("GLM_API_KEY not set in .env - agent tasks will fail")
+
     logger.info("Hermes Swarm API starting up")
     yield
     logger.info("Hermes Swarm API shutting down")

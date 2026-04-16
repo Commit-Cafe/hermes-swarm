@@ -5,21 +5,16 @@ import { api } from "@/lib/api"
 import { useSSEEvent } from "@/lib/hooks"
 
 const MODELS = [
-  { value: "", label: "Default" },
-  { value: "anthropic/claude-sonnet-4", label: "Claude Sonnet 4" },
-  { value: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet" },
-  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { value: "openai/gpt-4.1", label: "GPT-4.1" },
+  { value: "", label: "GLM-5-Turbo (Default)" },
+  { value: "glm-5-turbo", label: "GLM-5-Turbo" },
   { value: "glm-5", label: "GLM-5" },
+  { value: "glm-4-plus", label: "GLM-4-Plus" },
+  { value: "glm-4-flash", label: "GLM-4-Flash" },
+  { value: "glm-4-long", label: "GLM-4-Long" },
 ]
 
 const PROVIDERS = [
-  { value: "", label: "Auto" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "gemini", label: "Gemini" },
-  { value: "openrouter", label: "OpenRouter" },
-  { value: "zai", label: "ZAI" },
+  { value: "", label: "ZhipuAI" },
 ]
 
 type ChatMessage = {
@@ -53,48 +48,53 @@ export function AgentChat({
   const [nameDraft, setNameDraft] = React.useState(slot.name)
   const [showSettings, setShowSettings] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
-  const inputRef = React.useRef<HTMLTextAreaElement>(null)
+
+  const slotRef = React.useRef(slot)
+  slotRef.current = slot
+  const updateRef = React.useRef(onUpdateSlot)
+  updateRef.current = onUpdateSlot
 
   React.useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [slot.messages])
+  }, [slot.messages.length])
 
   const handleLogEvent = React.useCallback((event: any) => {
-    if (!slot.currentTaskId || event.task_id !== slot.currentTaskId) return
-    if (event.type !== "log") return
+    const s = slotRef.current
+    if (!s.currentTaskId || event.task_id !== s.currentTaskId) return
     if (event.stream === "stderr") return
-    onUpdateSlot(slot.slotId, {
+    updateRef.current(s.slotId, (prev: AgentSlot) => ({
+      ...prev,
       messages: [
-        ...slot.messages,
+        ...prev.messages,
         {
           id: `log-${Date.now()}-${Math.random()}`,
-          role: "assistant",
+          role: "assistant" as const,
           content: event.content,
           timestamp: new Date().toISOString(),
-          taskId: slot.currentTaskId,
+          taskId: s.currentTaskId!,
         },
       ],
-    })
-  }, [slot.currentTaskId, slot.messages, slot.slotId, onUpdateSlot])
+    }))
+  }, [])
 
   useSSEEvent("log", handleLogEvent)
 
   const handleStatusEvent = React.useCallback((event: any) => {
-    if (!slot.currentTaskId || event.task_id !== slot.currentTaskId) return
-    if (event.type !== "status_changed") return
+    const s = slotRef.current
+    if (!s.currentTaskId || event.task_id !== s.currentTaskId) return
     if (event.status === "completed" || event.status === "failed") {
-      onUpdateSlot(slot.slotId, {
+      updateRef.current(s.slotId, (prev: AgentSlot) => ({
         isRunning: false,
-        messages: slot.messages.map((m) =>
-          m.taskId === slot.currentTaskId && m.role === "assistant" && m.id.startsWith("streaming")
+        messages: prev.messages.map((m) =>
+          m.taskId === s.currentTaskId && m.role === "assistant" && m.id.startsWith("streaming")
             ? { ...m, id: m.id.replace("streaming", "final"), status: event.status }
             : m
         ),
-      })
+      }))
     }
-  }, [slot.currentTaskId, slot.messages, slot.slotId, onUpdateSlot])
+  }, [])
 
   useSSEEvent("status_changed", handleStatusEvent)
 
@@ -156,21 +156,14 @@ export function AgentChat({
     setEditingName(false)
   }
 
-  const statusDot = slot.isRunning
-    ? "bg-green-400 animate-pulse"
-    : slot.messages.length > 0
-      ? "bg-gray-400"
-      : "bg-gray-300"
-
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
+    <div className="flex flex-col h-full bg-card rounded-lg border border-border overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
-          <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot}`} />
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${slot.isRunning ? "bg-foreground animate-pulse" : slot.messages.length > 0 ? "bg-muted-foreground" : "bg-border"}`} />
           {editingName ? (
             <input
-              className="bg-transparent text-sm font-medium border-b border-zinc-300 outline-none w-28"
+              className="bg-transparent text-xs font-medium border-b border-border outline-none w-24"
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
               onBlur={saveName}
@@ -179,35 +172,34 @@ export function AgentChat({
             />
           ) : (
             <span
-              className="text-sm font-medium truncate cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-300"
+              className="text-xs font-medium truncate cursor-pointer hover:text-muted-foreground transition-colors"
               onDoubleClick={() => { setEditingName(true); setNameDraft(slot.name) }}
-              title="双击编辑名称"
+              title="Double click to rename"
             >
               {slot.name}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-zinc-400 hidden sm:block">
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground hidden sm:block font-mono">
             {MODELS.find((m) => m.value === slot.model)?.label || "Default"}
           </span>
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 text-xs"
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-accent text-muted-foreground text-[10px] transition-colors"
           >
             ⚙
           </button>
         </div>
       </div>
 
-      {/* Settings dropdown */}
       {showSettings && (
-        <div className="px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800 space-y-2 bg-zinc-50/30 dark:bg-zinc-900/30">
+        <div className="px-3 py-2 border-b border-border space-y-1.5 bg-muted/30">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase tracking-wide">Model</label>
+              <label className="text-[9px] text-muted-foreground uppercase tracking-wider">Model</label>
               <select
-                className="w-full h-7 text-xs rounded-md border border-zinc-200 dark:border-zinc-700 bg-transparent px-1.5 mt-0.5"
+                className="w-full h-6 text-[11px] rounded border border-border bg-background px-1.5 mt-0.5"
                 value={slot.model}
                 onChange={(e) => { onUpdateSlot(slot.slotId, { model: e.target.value }); setShowSettings(false) }}
               >
@@ -217,9 +209,9 @@ export function AgentChat({
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase tracking-wide">Provider</label>
+              <label className="text-[9px] text-muted-foreground uppercase tracking-wider">Provider</label>
               <select
-                className="w-full h-7 text-xs rounded-md border border-zinc-200 dark:border-zinc-700 bg-transparent px-1.5 mt-0.5"
+                className="w-full h-6 text-[11px] rounded border border-border bg-background px-1.5 mt-0.5"
                 value={slot.provider}
                 onChange={(e) => { onUpdateSlot(slot.slotId, { provider: e.target.value }); setShowSettings(false) }}
               >
@@ -232,33 +224,30 @@ export function AgentChat({
         </div>
       )}
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2 min-h-0">
         {slot.messages.length === 0 && !slot.isRunning && (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-400 text-xs gap-2">
-            <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-lg">
-              🐝
-            </div>
-            <span>输入 prompt 开始工作</span>
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-[11px] gap-1.5">
+            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-sm">🐝</div>
+            <span>Enter a prompt to start</span>
           </div>
         )}
         {slot.messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words ${
+              className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed whitespace-pre-wrap break-words ${
                 msg.role === "user"
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-foreground"
               }`}
             >
               {msg.role === "assistant" && msg.content === "" && slot.isRunning ? (
-                <div className="flex items-center gap-1.5 text-zinc-400">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
                   <div className="flex gap-0.5">
-                    <span className="w-1 h-1 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="w-1 h-1 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="w-1 h-1 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    <span className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                   </div>
-                  <span>思考中...</span>
+                  <span>thinking...</span>
                 </div>
               ) : msg.role === "assistant" && msg.content ? (
                 <div>
@@ -269,14 +258,10 @@ export function AgentChat({
                     </React.Fragment>
                   ))}
                   {msg.status === "completed" && (
-                    <div className="mt-1.5 pt-1.5 border-t border-zinc-200 dark:border-zinc-700 text-[10px] text-green-500">
-                      ✓ 完成
-                    </div>
+                    <div className="mt-1 pt-1 border-t border-border text-[9px] text-muted-foreground">✓ done</div>
                   )}
                   {msg.status === "failed" && (
-                    <div className="mt-1.5 pt-1.5 border-t border-zinc-200 dark:border-zinc-700 text-[10px] text-red-400">
-                      ✗ 失败
-                    </div>
+                    <div className="mt-1 pt-1 border-t border-border text-[9px] text-destructive">✗ failed</div>
                   )}
                 </div>
               ) : msg.content}
@@ -285,13 +270,11 @@ export function AgentChat({
         ))}
       </div>
 
-      {/* Input */}
-      <div className="border-t border-zinc-100 dark:border-zinc-800 p-3">
-        <div className="flex items-end gap-2">
+      <div className="border-t border-border p-2">
+        <div className="flex items-end gap-1.5">
           <textarea
-            ref={inputRef}
-            className="flex-1 resize-none rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-zinc-300 dark:focus:ring-zinc-600 min-h-[36px] max-h-[100px] placeholder:text-zinc-400"
-            placeholder={slot.isRunning ? "任务运行中..." : "输入 prompt... (Enter 发送)"}
+            className="flex-1 resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-ring min-h-[32px] max-h-[80px] placeholder:text-muted-foreground"
+            placeholder={slot.isRunning ? "Running..." : "Enter prompt..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -301,9 +284,9 @@ export function AgentChat({
           <button
             onClick={handleSubmit}
             disabled={!input.trim() || slot.isRunning}
-            className="w-8 h-8 flex items-center justify-center rounded-xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 disabled:opacity-30 disabled:cursor-not-allowed shrink-0 text-sm"
+            className="w-7 h-7 flex items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed shrink-0 text-xs"
           >
-            ↑
+            ↗
           </button>
         </div>
       </div>

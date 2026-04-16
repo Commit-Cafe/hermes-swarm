@@ -2,10 +2,12 @@
 
 import * as React from "react"
 import {
+  IconBrandTelegram,
   IconChartBar,
   IconDashboard,
   IconInnerShadowTop,
   IconListDetails,
+  IconTerminal2,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -20,13 +22,17 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarGroup,
+  SidebarGroupContent,
 } from "@/components/ui/sidebar"
+
+import Link from "next/link"
 
 const data = {
   user: {
     name: "Hermes Commander",
     email: "swarm@hermes",
-    avatar: "/avatars/shadcn.jpg",
+    avatar: "",
   },
   navMain: [
     {
@@ -47,13 +53,11 @@ const data = {
     {
       title: "Logs",
       url: "/logs",
-      icon: IconChartBar,
+      icon: IconTerminal2,
     },
   ],
   navSecondary: [] as {title: string; url: string; icon: any}[],
 }
-
-import Link from "next/link"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
@@ -62,15 +66,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:!p-1.5">
-              <Link href="/dashboard">
+              <Link href="/">
                 <IconInnerShadowTop className="!size-5" />
-                <span className="text-base font-semibold">Hermes Swarm</span>
+                <span className="text-base font-semibold tracking-tight">Hermes Swarm</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Workbench">
+                  <Link href="/">
+                    <IconBrandTelegram />
+                    <span>Workbench</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
         <NavMain items={data.navMain} />
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
